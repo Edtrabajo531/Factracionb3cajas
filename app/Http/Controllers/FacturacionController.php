@@ -60,7 +60,7 @@ class FacturacionController extends Controller
 
         foreach ($detalles1 as $index => $d) {
             if ($d["pro_grabaiva"]) {
-                $iva = ($d["totalsiniva"]) * 12 / 100;
+                $iva = ($d["totalsiniva"]) * 15 / 100;
                 $subtotaliva12 += ($d["totalsiniva"]);
                 $totalIva += $iva;
             } else {
@@ -99,7 +99,7 @@ class FacturacionController extends Controller
 
         $fecha = $venta->fecha;
         $desc_monto = $venta->desc_monto;
-        $subtotaliva12D = $subtotaliva12 / 1.12;
+        $subtotaliva12D = $subtotaliva12 / 1.15;
         $iva = $subtotaliva12 - $subtotaliva12D;
 
         return compact('total', 'empresa1', 'empresa2', 'detalles1', 'nro_factura', 'cliente', 'venta', 'subtotaliva0');
@@ -135,7 +135,7 @@ class FacturacionController extends Controller
             ->with([
                 'precios' => function ($query) {
                     // Realizar la manipulación adicional aquí
-                    $query->selectRaw('*, ROUND(monto * 1.12, 2) as monto');
+                    $query->selectRaw('*, ROUND(monto * 1.15, 2) as monto');
                 }
             ])
             ->first();
@@ -150,7 +150,8 @@ class FacturacionController extends Controller
     public function pay(Request $request)
     {
 
-
+        $request->caja_url = $request->caja_id;
+        
         $caja1 = new \stdClass;
         $caja2 = new \stdClass;
         $caja3 = new \stdClass;
@@ -257,7 +258,7 @@ class FacturacionController extends Controller
         // calculos f1 y f2
         foreach ($request->productos as $p) {
             $value = floatval($p["pro_precioventa"]);
-            $totalf += $value;
+            $totalf += $value * $p["cantidad"];
             $totalDescuento += $p["descmonto"];
         }
 
@@ -277,13 +278,13 @@ class FacturacionController extends Controller
         $venta->dir_cliente = $cliente->direccion_cliente;
         $venta->correo_cliente = $cliente->correo_cliente;
         $venta->ciu_cliente = $cliente->ciudad_cliente;
-        $venta->valiva = 0.12;
-        $venta->subconiva = $totalf / 1.12;
+        $venta->valiva = 0.15;
+        $venta->subconiva = $totalf / 1.15;
         $venta->subsiniva = 0;
         $venta->desc_monto = $totalDescuento;
-        $venta->descsubconiva = ($totalf / 1.12) - $totalDescuento;
+        $venta->descsubconiva = ($totalf / 1.15) - $totalDescuento;
         $venta->descsubsiniva = 0; //pendiente
-        $venta->montoiva = ($totalf / 1.12) * 0.12; //preguntar
+        $venta->montoiva = ($totalf / 1.15) * 0.15; //preguntar
         $venta->montototal = $totalf;
         $venta->fecharegistro = Carbon::now('-05:00')->format('Y-m-d H:i:s');
         $venta->idusu = 18; // ARREGLAR PARA QUE USE EL AUTENTICADO
@@ -313,7 +314,7 @@ class FacturacionController extends Controller
             $detalle->precio = $p['totalsiniva'] / $p['cantidad'];
             $detalle->subtotal = $p['totalsiniva']; //preguntar
             $detalle->iva = 1;
-            $detalle->montoiva = $p['totalsiniva'] * 0.12;
+            $detalle->montoiva = $p['totalsiniva'] * 0.15;
             $detalle->descmonto = $p['descmonto'];
             $detalle->descsubtotal = $p['totalsiniva'] - $p['descmonto'];
             $detalle->id_almacen = 1; //añadir almacen
