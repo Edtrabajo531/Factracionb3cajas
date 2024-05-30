@@ -43,22 +43,52 @@ class FacturacionController extends Controller
         }
         return response()->json(['status' => $status]);
     }
-	
-	
 
-  public function data_print_invoice($nro_factura = Null, $tipo_documento = Null, $caja_id = Null)
+
+    public function data_print_invoice2($request, $id_venta, $nro_factura)
+    {
+        $venta = Venta::where('id_venta', $id_venta)->first();
+        $cliente = Cliente::find($venta->id_cliente);
+        $empresa1 = Empresa::find($venta->id_empresa);
+        $detalles1 = $request->productos;
+
+        $subtotaliva12 = 0;
+        $subtotaliva0 = 0;
+        $descuento = $request->totaldescuento;
+        $totalIva = 0;
+        $total = $request->total;
+
+        foreach ($detalles1 as $index => $d) {
+            if ($d["pro_grabaiva"]) {
+                $iva = ($d["totalsiniva"]) * 12 / 100;
+                $subtotaliva12 += ($d["totalsiniva"]);
+                $totalIva += $iva;
+            } else {
+                $subtotaliva0 += ($d["totalsiniva"]);
+            }
+        }
+        // SUBTOTAL IVA 12%:
+        // SUBTOTAL IVA 0%:
+        // DESCUENTO: 
+        // IVA: 
+
+        $fecha = $venta->fecha;
+        return compact('empresa1', 'detalles1', 'cliente', 'venta', 'nro_factura', 'subtotaliva12', 'subtotaliva0', 'descuento', 'totalIva', 'total');
+    }
+
+
+    public function data_print_invoice($nro_factura = Null, $tipo_documento = Null, $caja_id = Null)
     {
 
-		$venta = Venta::where('nro_factura', $nro_factura)->where('tipo_doc', $tipo_documento)->where('id_caja', $caja_id)->first();
+        $venta = Venta::where('nro_factura', $nro_factura)->where('tipo_doc', $tipo_documento)->where('id_caja', $caja_id)->first();
         $cliente = Cliente::find($venta->id_cliente);
 
         $empresa1 = Empresa::find($venta->id_empresa);
         $empresa2 = "";
- 
-		$detalles1 = Ventadetalle::leftJoin('producto', 'producto.pro_id', '=', 'venta_detalle.id_producto')
+
+        $detalles1 = Ventadetalle::leftJoin('producto', 'producto.pro_id', '=', 'venta_detalle.id_producto')
             ->select('producto.pro_grabaiva as pro_grabaiva', 'producto.pro_nombre as pro_nombre', 'venta_detalle.*')
             ->where('id_venta', $venta->id_venta)->get();
-        // }
 
         $subtotalsiniva12 = 0;
         $subtotaliva0 = 0;
@@ -73,8 +103,6 @@ class FacturacionController extends Controller
         $iva = $subtotaliva12 - $subtotaliva12D;
 
         return compact('total', 'empresa1', 'empresa2', 'detalles1', 'nro_factura', 'cliente', 'venta', 'subtotaliva0');
-
-        /*$Empresa = Empresa::find($venta->id_empresa);*/
     }
 
     public function leading_zeros()
@@ -96,19 +124,21 @@ class FacturacionController extends Controller
         }
         $code = $request->code;
 
-$product = Product::join("almapro", "almapro.id_pro", "=", "producto.pro_id")
-    ->select("producto.*", "almapro.existencia as existencia", "almapro.id_alm as almacen_id")
-    ->where("id_alm", $almacen)
-    ->where("pro_codigobarra", $code)
-    ->orWhere(function (Builder $query) use ($almacen, $code) {
-        $query->where("id_alm", $almacen)
-            ->where("pro_codigoauxiliar", $code);
-    })
-    ->with(['precios' => function ($query) {
-        // Realizar la manipulación adicional aquí
-        $query->selectRaw('*, ROUND(monto * 1.12, 2) as monto');
-    }])
-    ->first();
+        $product = Product::join("almapro", "almapro.id_pro", "=", "producto.pro_id")
+            ->select("producto.*", "almapro.existencia as existencia", "almapro.id_alm as almacen_id")
+            ->where("id_alm", $almacen)
+            ->where("pro_codigobarra", $code)
+            ->orWhere(function (Builder $query) use ($almacen, $code) {
+                $query->where("id_alm", $almacen)
+                    ->where("pro_codigoauxiliar", $code);
+            })
+            ->with([
+                'precios' => function ($query) {
+                    // Realizar la manipulación adicional aquí
+                    $query->selectRaw('*, ROUND(monto * 1.12, 2) as monto');
+                }
+            ])
+            ->first();
 
         if ($product == Null) {
             return response()->json(['result' => 'not exist']);
@@ -119,95 +149,120 @@ $product = Product::join("almapro", "almapro.id_pro", "=", "producto.pro_id")
 
     public function pay(Request $request)
     {
-        $caja_id = $request->caja_id;
 
-        if ($caja_id == 1) {
-            $tipodocstring = "FACTURA DE VENTA";
 
-            if ($request->tipo_documento == 2) {
-                $punto_1 = "001-010-";
-                $punto_2 = "000000001";
-                $last_venta = Venta::where('tipo_doc', 2)->where('id_caja', $request->caja_id)->orderBy('id_venta', 'desc')->get()->first();
-                if ($last_venta) {
-                    $length = 9;
-                    $punto_2 = substr($last_venta->nro_factura, -$length);
-                    $punto_2 = intval($punto_2) + 1;
-                    $punto_2 = substr(str_repeat(0, $length) . $punto_2, -$length);
-                    $numerofa = $punto_1 . $punto_2;
-                } else {
-                    $numerofa = $punto_1 . $punto_2;
-                }
-            } else {
-                $tipodocstring = "NOTA DE VENTA";
-                $punto_2 = "000000001";
-                $last_venta = Venta::where('tipo_doc', 1)->where('id_caja', $request->caja_id)->orderBy('id_venta', 'desc')->get()->first();
-                if ($last_venta) {
-                    $length = 9;
+        $caja1 = new \stdClass;
+        $caja2 = new \stdClass;
+        $caja3 = new \stdClass;
+        $caja1->productos = [];
+        $caja1->caja_id = 1;
+        $caja1->punto_id = 1;
+        $caja1->punto = "001-010-";
 
-                    $punto_2 = intval($last_venta->nro_factura) + 1;
-                    $punto_2 = substr(str_repeat(0, $length) . $punto_2, -$length);
-                    $numerofa = $punto_2;
-                } else {
-                    $numerofa = $punto_2;
-                }
-            }
-        } else if ($caja_id != 1) {
-            if ($request->tipo_documento == 2) {
-                $tipodocstring = "FACTURA DE VENTA";
-                $punto_1 = "001-100-";
-                $punto_2 = "000000001";
-                $last_venta = Venta::where('tipo_doc', 2)->where('id_caja', $request->caja_id)->orderBy('id_venta', 'desc')->get()->first();
-                if ($last_venta) {
-                    $length = 9;
-                    $punto_2 = substr($last_venta->nro_factura, -$length);
-                    $punto_2 = intval($punto_2) + 1;
-                    $punto_2 = substr(str_repeat(0, $length) . $punto_2, -$length);
-                    $numerofa = $punto_1 . $punto_2;
-                } else {
-                    $numerofa = $punto_1 . $punto_2;
-                }
-            } else {
-                $tipodocstring = "NOTA DE VENTA";
-                $punto_2 = "000000001";
-                $last_venta = Venta::where('tipo_doc', 1)->where('id_caja', $request->caja_id)->orderBy('id_venta', 'desc')->get()->first();
-                if ($last_venta) {
-                    $length = 9;
+        $caja1->sucursal_id = 1;
+        $caja1->empresa_id = 1;
 
-                    $punto_2 = intval($last_venta->nro_factura) + 1;
-                    $punto_2 = substr(str_repeat(0, $length) . $punto_2, -$length);
-                    $numerofa = $punto_2;
-                } else {
-                    $numerofa = $punto_2;
-                }
+        $caja2->productos = [];
+        $caja2->caja_id = 11;
+        $caja2->punto_id = 10;
+        $caja2->punto = "001-010-";
+        $caja2->sucursal_id = 2;
+        $caja2->empresa_id = 2;
+
+        $caja3->productos = [];
+        $caja3->caja_id = 12;
+        $caja3->punto_id = 11;
+        $caja3->punto = "001-010-";
+
+        $caja3->sucursal_id = 3;
+        $caja3->empresa_id = 3;
+
+        foreach ($request->productos as $p) {
+
+            if ($p["caja_id"] == 1) {
+                $caja1->productos[] = $p;
+            } else if ($p["caja_id"] == 11) {
+                $caja2->productos[] = $p;
+            } else if ($p["caja_id"] == 12) {
+                $caja3->productos[] = $p;
             }
         }
 
-        $caja_id = $request->caja_id;
+        $requestAll = clone $request;
 
-        if ($caja_id == 1) {
-            $punto = 1;
-            $sucursal = 1;
-        } else if ($caja_id != 1) {
-            $punto = 1;
-            $sucursal = 1;
+        $r1 = $this->crearFactura($request, $caja1);
+        $r2 = $this->crearFactura($request, $caja2);
+        $r3 = $this->crearFactura($request, $caja3);
+
+        $rp = "";
+        if (count($caja1->productos) != 0) {
+            $rp = $r1;
+        } else if (count($caja2->productos) != 0) {
+            $rp = $r2;
+        } else {
+            $rp = $r3;
+        }
+
+        $facturaprint = $this->data_print_invoice2($requestAll, $rp->id_venta, $rp->nro_factura);
+
+        return response()->json(['result' => 'ok', 'message' => 'Documento pagado con éxito.', 'nro_factura' => $rp->nro_factura, 'facturaprint' => $facturaprint]);
+    }
+
+    public function crearFactura($request, $caja)
+    {
+
+        if (count($caja->productos) == 0) {
+            return;
+        }
+
+        $request->productos = $caja->productos;
+        $request->caja_id = $caja->caja_id;
+        $caja_id = $caja->caja_id;
+        $punto_1 = $caja->punto;
+        $punto = $caja->punto_id;
+        $sucursal = $caja->sucursal_id;
+        $empresa_id = $caja->empresa_id;
+
+        if ($request->tipo_documento == 2) {
+            $tipodocstring = "FACTURA DE VENTA";
+            $punto_2 = "000000001";
+            $last_venta = Venta::where('tipo_doc', 2)->where('id_caja', $caja_id)->orderBy('id_venta', 'desc')->get()->first();
+            if ($last_venta) {
+                $length = 9;
+                $punto_2 = substr($last_venta->nro_factura, -$length);
+                $punto_2 = intval($punto_2) + 1;
+                $punto_2 = substr(str_repeat(0, $length) . $punto_2, -$length);
+                $numerofa = $punto_1 . $punto_2;
+            } else {
+                $numerofa = $punto_1 . $punto_2;
+            }
+        } else {
+            $tipodocstring = "NOTA DE VENTA";
+            $punto_2 = "000000001";
+            $last_venta = Venta::where('tipo_doc', 1)->where('id_caja', $caja_id)->orderBy('id_venta', 'desc')->get()->first();
+            if ($last_venta) {
+                $length = 9;
+                $punto_2 = intval($last_venta->nro_factura) + 1;
+                $punto_2 = substr(str_repeat(0, $length) . $punto_2, -$length);
+                $numerofa = $punto_2;
+            } else {
+                $numerofa = $punto_2;
+            }
         }
 
         $id_vendedor = 18;
         $cliente = Cliente::where('id_cliente', $request->id_cliente)->first();
-        $totalGIVA = 0;
         $totalf = 0;
+        $totalDescuento = 0;
         // calculos f1 y f2
         foreach ($request->productos as $p) {
-            if ($p['pro_grabaiva'] == 1) {
-                $totalGIVA += $p['total'];
-            }
-            // $totalf += $p['pro_precioventa'];
+            $value = floatval($p["pro_precioventa"]);
+            $totalf += $value;
+            $totalDescuento += $p["descmonto"];
         }
 
+        // { "pro_id": 80002, "pro_preciocompra": "5.130000", "pro_precioventa": "12.9024", "pro_maximo": "0.00", "pro_minimo": "0.00", "pro_idcategoria": "0", "pro_iddeducible": "0", "pro_grabaiva": 1, "pro_esservicio": 0, "pro_estatus": "A", "pro_imagen": "", "pro_idunidadmedida": 1, "pro_aplicompra": 1, "pro_apliventa": 1, "habilitavariante": 0, "productodescontarventa": 0, "maxitemvariante": "0", "comanda": 1, "cantidad": 1, "idcla": 31, "preparado": 0, "ingrediente": 0, "id_cto_retencion": 0, "pro_garantia": 0, "ubicacion": "", "subsidio": "0.000000", "idcategoriacontable": 3, "imagen_path": "0", "ruc": 1, "marca": 0, "caja_id": 12, "existencia": "4.00", "almacen_id": 1, "precios": [ { "id_prepro": 3, "pro_id": 80002, "id_precios": 11, "monto": "8.90", "desc_precios": "PRECIO 1", "esta_precios": "A", "color": "#ff0000" }, { "id_prepro": 361, "pro_id": 80002, "id_precios": 12, "monto": "9.90", "desc_precios": "PRECIO 2", "esta_precios": "A", "color": "#ff0000" } ], "typeDesc": "dollar", "desc": 0, "descmonto": 0, "descPorcentage": 0, "porcdesc": 0, "descsubtotal": 0, "precioOriginal": "12.9024", "price_correct": "12.9024", "type_price": "original", "totalsiniva": 11.52, "totalsiniva_nodesc": 11.52, "total": 12.9024, "totalNodesc": 12.9024 } ] 
 
-        $totalf = $request->total;
-
-        // Factura 1 graba iva
         $venta = new Venta;
         $venta->fecha = Carbon::now('-05:00')->format('Y-m-d');
         $venta->area = "";
@@ -225,8 +280,8 @@ $product = Product::join("almapro", "almapro.id_pro", "=", "producto.pro_id")
         $venta->valiva = 0.12;
         $venta->subconiva = $totalf / 1.12;
         $venta->subsiniva = 0;
-        $venta->desc_monto = $request->totaldescuento;
-        $venta->descsubconiva = ($totalf / 1.12) - $request->totaldescuento;
+        $venta->desc_monto = $totalDescuento;
+        $venta->descsubconiva = ($totalf / 1.12) - $totalDescuento;
         $venta->descsubsiniva = 0; //pendiente
         $venta->montoiva = ($totalf / 1.12) * 0.12; //preguntar
         $venta->montototal = $totalf;
@@ -236,7 +291,7 @@ $product = Product::join("almapro", "almapro.id_pro", "=", "producto.pro_id")
         $venta->id_cliente = $request->id_cliente;
         $venta->id_tipcancelacion = 1; //preguntar
         $venta->montoimpuestoadicional = 0; //preguntar
-        $venta->id_empresa = 1;
+        $venta->id_empresa = $empresa_id;
         $venta->id_sucursal = $sucursal;
         $venta->id_puntoemision = $punto; //preguntar
         $venta->id_caja = $caja_id; //preguntar
@@ -246,8 +301,8 @@ $product = Product::join("almapro", "almapro.id_pro", "=", "producto.pro_id")
         $venta->observaciones = $request->observaciones;
         $venta->placa_matricula = Null; //preguntar
         $venta->idmesa = 0;
+        $venta->caja_url = $request->caja_url;
         $venta->save();
-        // guardar detalles productos f1
 
         foreach ($request->productos as $p) {
 
@@ -268,6 +323,7 @@ $product = Product::join("almapro", "almapro.id_pro", "=", "producto.pro_id")
             $detalle->subsidio = 1; //preguntar
             $detalle->costo_unitario = $p['pro_precioventa']; //preguntar
             $detalle->costo_total = $p['total'];
+
             $detalle->save();
 
             $exist = DB::table('almapro')
@@ -285,7 +341,7 @@ $product = Product::join("almapro", "almapro.id_pro", "=", "producto.pro_id")
                     'existencia' => $exist,
                 ]);
 
-            if (!strpos(url()->current(),'localhost')) {
+            if (!strpos(url()->current(), 'localhost')) {
                 DB::select('call kardexegreso_ins("' . $p['pro_id'] . '", "' . $venta->nro_factura . '","' . $tipodocstring . '","' . $p['cantidad'] . '","' . $p['pro_precioventa'] . '","' . $p['total'] . '","0","0","' . $p['almacen_id'] . '")');
             }
 
@@ -303,9 +359,9 @@ $product = Product::join("almapro", "almapro.id_pro", "=", "producto.pro_id")
                 $venta_creditocuota->p100interes_mora = $fp['p100interes_mora'];
                 $venta_creditocuota->cantidadcuotas = $fp['cantidadcuotas'];
                 $venta_creditocuota->abonoinicial = $fp['abonoinicial'];
-                $venta_creditocuota->montobasecredito = $fp['amount'];
+                $venta_creditocuota->montobasecredito = $totalf;
                 $venta_creditocuota->montointerescredito = $fp['montointerescredito'];
-                $venta_creditocuota->montocredito = $fp['amount'];
+                $venta_creditocuota->montocredito = $totalf;
                 $venta_creditocuota->montobasemora = null;
                 $venta_creditocuota->montointeresmora = null;
                 $venta_creditocuota->id_estado = 3;
@@ -314,14 +370,14 @@ $product = Product::join("almapro", "almapro.id_pro", "=", "producto.pro_id")
                 $venta_credito = new venta_creditocuota;
                 $venta_credito->id_venta = $venta->id_venta;
                 $venta_credito->fechalimite = $fp['fechalimite'];
-                $venta_credito->monto = $fp['amount'];
+                $venta_credito->monto = $totalf;
                 $venta_credito->pagado = $fp['abonoinicial'];
                 $venta_credito->save();
 
             } else if ($fp['type'] == 'CONTADO') {
                 $formapago = formapago::where('id_formapago', $fp['id_formapago'])->first();
 
-                $caja_id = $request->caja_id;
+
 
                 if ($formapago->esinstrumentobanco) {
 
@@ -345,15 +401,11 @@ $product = Product::join("almapro", "almapro.id_pro", "=", "producto.pro_id")
                     $new = new venta_formapago;
                     $new->id_venta = $venta->id_venta;
                     $new->id_formapago = $fp['id_formapago'];
-                    $new->monto = $fp['amount'];
+                    $new->monto = $totalf;
                     $new->fecha = Carbon::now('-05:00')->format("Y-m-d H:i:s");
                     $new->nro_comprobante = 1;
 
-                    if ($caja_id == 1) {
-                        $new->id_cajapago = 1;
-                    } else if ($caja_id == 10) {
-                        $new->id_cajapago = 10;
-                    }
+                    $new->id_cajapago = $caja_id;
                     $new->save();
                 } else if ($formapago->estarjeta) {
 
@@ -379,31 +431,21 @@ $product = Product::join("almapro", "almapro.id_pro", "=", "producto.pro_id")
                     $new = new venta_formapago;
                     $new->id_venta = $venta->id_venta;
                     $new->id_formapago = $fp['id_formapago'];
-                    $new->monto = $fp['amount'];
+                    $new->monto = $totalf;
                     $new->fecha = Carbon::now('-05:00')->format("Y-m-d H:i:s");
                     $new->nro_comprobante = 1;
 
-                    if ($caja_id == 1) {
-                        $new->id_cajapago = 1;
-                    } else if ($caja_id == 10) {
-                        $new->id_cajapago = 10;
-                    }
+                    $new->id_cajapago = $caja_id;
 
                     $new->save();
                 } else {
                     $new = new venta_formapago;
                     $new->id_venta = $venta->id_venta;
                     $new->id_formapago = $fp['id_formapago'];
-                    $new->monto = $fp['amount'];
+                    $new->monto = $totalf;
                     $new->fecha = Carbon::now('-05:00')->format("Y-m-d H:i:s");
                     $new->nro_comprobante = 1;
-
-
-                    if ($caja_id == 1) {
-                        $new->id_cajapago = 1;
-                    } else if ($caja_id == 10) {
-                        $new->id_cajapago = 10;
-                    }
+                    $new->id_cajapago = $caja_id;
 
                     $new->save();
                 }
@@ -411,18 +453,18 @@ $product = Product::join("almapro", "almapro.id_pro", "=", "producto.pro_id")
 
         }
 
-      
-		   $facturaprint = $this->data_print_invoice($venta->nro_factura, $request->tipo_documento,  $request->caja_id);
-        $formapago = "";
-        // formas de pago
-        return response()->json(['result' => 'ok', 'message' => 'Documento pagado con éxito.', 'nro_factura' => $venta->nro_factura, "cancel_payment" => $formapago, "formasdepago" => $request->formasdepago, 'facturaprint' => $facturaprint]);
+
+        $values = new \stdClass;
+        $values->nro_factura = $numerofa;
+        $values->caja_id = $caja_id;
+        $values->id_venta = $venta->id_venta;
+
+        return $values;
     }
 
     public function prueba()
     {
-
-
-        return dd(strpos(url()->current(),'localhost'));
+        return dd(strpos(url()->current(), 'localhost'));
     }
 
     public function list_productos(Request $request)
@@ -442,15 +484,7 @@ $product = Product::join("almapro", "almapro.id_pro", "=", "producto.pro_id")
             ->where("id_alm", $almacen)
             ->with("precios")
             ->get();
-        // $productos = DB::select("SELECT p.pro_grabaiva, p.pro_id, p.pro_nombre, p.pro_precioventa, p.pro_codigobarra,
-        // null as pro_imagen, p.imagen_path, ap.existencia as existencia, ap.id_alm as almacen_id
-        // FROM producto p
-        // JOIN almapro ap ON ap.id_pro = p.pro_id
-        // WHERE ap.id_alm = $almacen");
 
-        // User::with(['precios' => function (Builder $query) {
-        //     $query->where('title', 'like', '%code%');
-        // }])->get();
 
         return response()->json(["productos" => $productos, "precios" => $precios]);
     }
@@ -460,7 +494,6 @@ $product = Product::join("almapro", "almapro.id_pro", "=", "producto.pro_id")
         $clientes = Cliente::all();
         return $clientes;
     }
-
 
     public function searchClient(Request $request)
     {
@@ -491,9 +524,6 @@ $product = Product::join("almapro", "almapro.id_pro", "=", "producto.pro_id")
             if ($existIdent) {
                 return response()->json(['result' => 'error-validation', 'errors' => json_encode(["email" => "La identificación ya está siendo utilizada."])]);
             }
-            // if ($existEmail) {
-            //     return response()->json(['result' => 'error-validation', 'errors' => json_encode(["email" => "El correo ya está siendo utilizado."])]);
-            // }
 
             $cliente = Cliente::where('id_cliente', $request->id_cliente)->first();
             $cliente->tipo_ident_cliente = $request->tipo_ident_cliente;
@@ -507,6 +537,7 @@ $product = Product::join("almapro", "almapro.id_pro", "=", "producto.pro_id")
             $cliente->save();
 
             return response()->json(['message' => 'Datos actualizados con éxito.', 'data' => $cliente]);
+
         } else {
 
             $validator = Validator::make($request->all(), [
@@ -529,9 +560,7 @@ $product = Product::join("almapro", "almapro.id_pro", "=", "producto.pro_id")
             if ($existIdent) {
                 return response()->json(['result' => 'error-validation', 'errors' => json_encode(["ident_cliente" => "La identificación ya está siendo utilizada."])]);
             }
-            // if ($existEmail) {
-            //     return response()->json(['result' => 'error-validation', 'errors' => json_encode(["correo_cliente" => "El correo ya está siendo utilizado."])]);
-            // }
+
 
             $cliente = new Cliente;
             $cliente->tipo_ident_cliente = $request->tipo_ident_cliente;
@@ -548,20 +577,4 @@ $product = Product::join("almapro", "almapro.id_pro", "=", "producto.pro_id")
         }
     }
 
-    public function editar_usuario()
-    {
-    }
 }
-
-
-// $total = 0;
-// $detalles1 = Ventadetalle::where('id_venta',$venta->id_venta)->get();
-// foreach($detalles1 as $deta){
-//     $total += $deta->costo_total;
-// }
-
-// $detalles2 = Ventadetalle::where('id_venta',$ventas->last()->id_venta)->get();
-
-// foreach($detalles2 as $deta){
-//     $total += $deta->costo_total;
-// }

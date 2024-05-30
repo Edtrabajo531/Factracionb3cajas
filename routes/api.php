@@ -23,9 +23,7 @@ Route::group([
     Route::post('store-update-client', 'FacturacionController@store_update_client');
     Route::post('pay', 'FacturacionController@pay');
     Route::get('data-print-invoice', 'FacturacionController@data_print_invoice');
-
     Route::post('search-product-code', 'FacturacionController@search_product_code');
-
     Route::post('validate-cash-status', 'FacturacionController@validate_cash_status');
 
 });
